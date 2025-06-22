@@ -1,5 +1,5 @@
-import 'package:bucketlist/addBucketList.dart';
-import 'package:bucketlist/viewItem.dart';
+import 'package:bucketlist/screens/add_screen.dart';
+import 'package:bucketlist/screens/view_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 
@@ -27,7 +27,12 @@ class _MainScreenState extends State<MainScreen> {
         "https://flutterapitest1-505cb-default-rtdb.firebaseio.com/bucketlist.json",
       ); //phải có await đặt trước hành động mình sắp làm, //thay vì sử dụng var thì sử dụng response để store trong dio package
       //khuc nay quan trong
-      bucketListData = response.data;
+
+      if (response.data is List) {
+        bucketListData = response.data;
+      } else {
+        bucketListData = [];
+      }
       isLoading = false;
       isError = false;
       setState(() {});
@@ -65,39 +70,51 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget ListDataWidget() {
-    return ListView.builder(
+
+    //cần fallback value ?? false vi ko chac co ton tai element de true va false hay khong
+    List<dynamic> filteredList = bucketListData.where((element)=> (!element?["completed"]) ?? false).toList();
+
+    return filteredList.length <1 ? Center(child: Text("No data on bucket list")) : ListView.builder(
       //cu phap phai nho
       itemCount: bucketListData.length,
       itemBuilder: (BuildContext context, int index) {
-        return Padding(
-          padding: const EdgeInsets.all(8.0),
-          child: ListTile(
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) {
-                    return ViewItemScreen(
-                      title: bucketListData[index]['item'] ?? "",
-                      image: bucketListData[index]['image'] ?? "",
-                    );
+        return (bucketListData[index] is Map && (!bucketListData[index]?["completed"]) ?? false ) //nhớ kĩ dòng và hiểu dòng code này vì hơi phức tạp 
+            ? Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: ListTile(
+                  onTap: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) {
+                          return ViewItemScreen(
+                            index: index,
+                            title: bucketListData[index]['item'] ?? "",
+                            image: bucketListData[index]['image'] ?? "",
+                          );
+                        },
+                      ),
+                    ).then((value){ //tu load lai data khi back to listview screen
+                      if(value == "refresh")
+                      getData();
+                    });
                   },
+                  leading: CircleAvatar(
+                    radius:
+                        25, //với circleavatar thì radius để chỉnh độ bự của hình
+                    backgroundImage: NetworkImage(
+                      bucketListData[index]?['image'] ??
+                          "", // 1 dau cham hoi nghia la we are instructing that that if this object is null, then directly move to the fallback value and don't take this key.
+                    ),
+                  ),
+                  title: Text(bucketListData[index]?['item'] ?? ""),
+                  trailing: Text(
+                    bucketListData[index]?['cost'].toString() ?? "",
+                    style: TextStyle(fontSize: 15),
+                  ), //vì cost mình khai báo trong api kiểu dữ liệu là interger nên muốn thành text phải ép kiểu nó
                 ),
-              );
-            },
-            leading: CircleAvatar(
-              radius: 25, //với circleavatar thì radius để chỉnh độ bự của hình
-              backgroundImage: NetworkImage(
-                bucketListData[index]['image'] ?? "",
-              ),
-            ),
-            title: Text(bucketListData[index]['item'] ?? ""),
-            trailing: Text(
-              bucketListData[index]['cost'].toString() ?? "",
-              style: TextStyle(fontSize: 15),
-            ), //vì cost mình khai báo trong api kiểu dữ liệu là interger nên muốn thành text phải ép kiểu nó
-          ),
-        ); //buộc phải có ?? "" để cho get api có sai cũng trả về null
+            )
+            : SizedBox(); //buộc phải có ?? "" để cho get api có sai cũng trả về null
       },
     );
   }
@@ -114,15 +131,19 @@ class _MainScreenState extends State<MainScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       floatingActionButton: FloatingActionButton(
-        onPressed: () {
+        onPressed: () async {
           Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) {
-                return AddBucketListScreen(); //cách này đc sử dụng recommend sử dụng nhiều hơn
+                return AddBucketListScreen(newIndex: bucketListData.length,); //cách này đc sử dụng recommend sử dụng nhiều hơn
               },
             ),
-          );
+          ).then((value){
+            if(value == "refresh"){
+              getData();
+            }
+          });
         },
         shape: CircleBorder(),
         child: Icon(Icons.add),
@@ -143,6 +164,7 @@ class _MainScreenState extends State<MainScreen> {
       body: Expanded(
         // thuong` thi phai goi list view bang expanded de tranh loi layout
         child: RefreshIndicator(
+          //refresh indicator will not work if the list is empty
           //bọc listview bằng cái này để có thể refresh list cho data mới vào
           onRefresh: () async {
             getData();
@@ -151,7 +173,7 @@ class _MainScreenState extends State<MainScreen> {
               ? Center(child: CircularProgressIndicator())
               : isError
               ? errorWidget(texterror: "con cawjc")
-              : ListDataWidget(),
+              :  ListDataWidget(),
         ),
       ),
     );
